@@ -22,9 +22,11 @@ function readFile(path)
     return content
 end
 
-function padBinaryLeft(s)
-	local outstring = "0000000000000000"
-	outstring = string.sub(outstring,0,#outstring-#s)..s
+function padBinaryLeft(s,l)
+	local outstring = s
+	for _= #s + 1,l do
+		outstring = "0"..outstring
+	end
 	return outstring
 end
 

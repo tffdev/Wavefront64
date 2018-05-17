@@ -2,10 +2,18 @@ bitmap = require("bitmap")
 obj_loader = require("obj_loader")
 require("BinDecHex")
 require("util")
+function inTable(tab, val)
+    for index, value in ipairs(tab) do
+        if value == val then
+            return true
+        end
+    end
+    return false
+end
 
 --[[ 
 ==========================
- START OF PROCEDURAL CODE
+ PARAMETERS
 ==========================
 --]] 
 
@@ -43,9 +51,9 @@ end
 
 
 --[[ 
-=======================================
+====================================
  BITMAP PARSING TO BIG HEX-Y CHUNKS
-=======================================
+====================================
 --]] 
 print("Parsing bitmap...")
 table_of_bytes = {}
@@ -59,11 +67,13 @@ for i=0,bmp.width-1 do
 		end
 		table.insert(table_preview,preview_tokens[math.floor((((r+g+b)/(255*3))*#preview_tokens)+0.5)])
 
-		local binstring = intToBin(math.floor(r/8))..intToBin(math.floor(g/8))..intToBin(math.floor(b/8)).."1"
-		binstring = padBinaryLeft(binstring)
+		local binstring = padBinaryLeft(intToBin(math.floor(r/8)),5)..
+			padBinaryLeft(intToBin(math.floor(g/8)),5)..
+			padBinaryLeft(intToBin(math.floor(b/8)),5).."1"
+
 		local outstring = "0x"..string.lower(Bin2Hex(binstring))..","
-		if(j==0) then outstring = "\t"..outstring end
-		if(j==bmp.height-1) then outstring = outstring.."\n" end
+		if(j==bmp.height-1) then outstring = "\t"..outstring end
+		if(j==0) then outstring = outstring.."\n" end
 		table.insert(table_of_bytes,outstring)
 	end
 end
@@ -73,9 +83,9 @@ table.insert(final_file_output,"unsigned short Text_"..objectName.."_"..name_of_
 
 
 --[[ 
-=======================================
- FACES AND VERTS OUTPUT (gsSP2Triangles)
-=======================================
+========================
+ FACES AND VERTS OUTPUT
+========================
 --]]
 print("Creating faces and verts...")
 
@@ -83,13 +93,9 @@ faceTable = {}
 vertexTable = {}
 vertexOutputTable = {}
 vertsCreated = 0
--- generate faces array
+-- generate faces and verts arrays
 for i=1,#object.f do
 	local faceVertReference = {}
-	faceVertReference[1] = (object.f[i][1].v-2 >= 0 and object.f[i][1].v-2 or #object.f-1)
-	faceVertReference[2] = (object.f[i][2].v-2 >= 0 and object.f[i][2].v-2 or #object.f-1)
-	faceVertReference[3] = (object.f[i][3].v-2 >= 0 and object.f[i][3].v-2 or #object.f-1)
-
 	for j=1,3 do
 		if(vertexTable[tostring(object.f[i][j].v.."/"..object.f[i][j].vt)] == nil)then
 			--[[ 
@@ -101,8 +107,9 @@ for i=1,#object.f do
 				padStringLeft(math.floor(object_scale*object.v[object.f[i][j].v].y),8)..","..
 				padStringLeft(math.floor(object_scale*object.v[object.f[i][j].v].z),8)..","..
 				padStringLeft("0",8)..","..
-				padStringLeft((2*object_scale*(bmp.height+1)*object.vt[object.f[i][j].vt].v),8)..","..
-				padStringLeft((2*object_scale*(bmp.width+1)*object.vt[object.f[i][j].vt].u),8)..",     130,     130,     130,     0}, //vert "..object.f[i][j].v.."/"..object.f[i][j].vt..", reference: "..vertsCreated
+				padStringLeft(math.floor(2*object_scale*(bmp.height+1)*object.vt[object.f[i][j].vt].v),8)..","..
+				padStringLeft(math.floor(2*object_scale*(bmp.width+1)*object.vt[object.f[i][j].vt].u),8)..
+				",     130,     130,     130,     0}, //ref: "..vertsCreated
 
 			-- make vertex
 			vertexTable[tostring(object.f[i][j].v.."/"..object.f[i][j].vt)] = {
@@ -111,7 +118,9 @@ for i=1,#object.f do
 			}
 			faceVertReference[j] = vertexTable[object.f[i][j].v.."/"..object.f[i][j].vt].index
 			vertsCreated = vertsCreated + 1
-			table.insert(vertexOutputTable,vertexTable[object.f[i][j].v.."/"..object.f[i][j].vt].content)
+			if(vertexTable[object.f[i][j].v.."/"..object.f[i][j].vt].content ~= nil) then
+				table.insert(vertexOutputTable,vertexTable[object.f[i][j].v.."/"..object.f[i][j].vt].content)
+			end
 		else
 			faceVertReference[j] = vertexTable[object.f[i][j].v.."/"..object.f[i][j].vt].index
 		end
@@ -119,22 +128,110 @@ for i=1,#object.f do
 	faceTable[i] = {faceVertReference[1],faceVertReference[2],faceVertReference[3]}
 end
 
--- create face output strings
-faceOutputTable = {}
-table.insert(faceOutputTable,"\tgsSPVertex(&Vtx_"..objectName.."_mesh01_0[0], "..vertsCreated..", 0)")
-for i=1,#faceTable, 2 do
-	if(#faceTable-i > 0) then
-		table.insert(faceOutputTable,"gsSP2Triangles("..faceTable[i][1]..", "..faceTable[i][2]..", "..faceTable[i][3]..", 0, "..faceTable[i+1][1]..", "..faceTable[i+1][2]..", "..faceTable[i+1][3]..", 0)")
-	else
-		table.insert(faceOutputTable,"gsSP1Triangle("..faceTable[i][1]..", "..faceTable[i][2]..", "..faceTable[i][3]..", 0)")
+--[[ 
+=================================================
+ SORT FACES AND VERTS INTO PACKS OF 32, BY INDEX
+=================================================
+--]]
+
+
+-- withholds the actual vert / face STRINGS per pack
+facesInPacks = {}
+
+-- small buffer to check which references are in each pack
+facesPackRefs = {}
+
+for i=1,10 do
+	facesInPacks[i] = {}
+	facesPackRefs[i] = {}
+end
+
+for i=1,10 do
+	for j=1,32 do
+		local shift = (i-1)*32
+		table.insert(facesPackRefs[i],j+shift)
 	end
 end
 
--- output verts
-table.insert(final_file_output,"Vtx_tn Vtx_"..objectName.."_mesh01_0["..#vertexOutputTable.."] = {\n"..table.concat(vertexOutputTable,"\n").."\n};")
--- output faces
-table.insert(final_file_output,"Gfx Vtx_"..objectName.."_mesh01_dl[] = {\n"..table.concat(faceOutputTable,",\n\t")..",\n\tgsSPEndDisplayList(),\n};")
+for i=1, #faceTable do
+	for j=1,10 do
+		if(
+			inTable(facesPackRefs[j], faceTable[i][1]) and
+			inTable(facesPackRefs[j], faceTable[i][2]) and
+			inTable(facesPackRefs[j], faceTable[i][3])
+			) then
+			table.insert(facesInPacks[j],faceTable[i])
+			break
+		end
+	end
+end
 
+
+--[[ 
+for i=1,#facesInPacks do
+	print("Pack "..(i)..":")
+	for j=1,#facesInPacks[i] do
+		print(table.concat(facesInPacks[i][j]," "))
+	end
+end
+--]] 
+
+
+-- output verts
+vertexRefs = {}
+
+for packNumber=1,#facesPackRefs do
+
+	if(#facesPackRefs[packNumber]>2) then
+		if(vertexOutputTable[facesPackRefs[packNumber][1]]~=nil) then
+			local outputTable = {}
+			for j=1,#facesPackRefs[packNumber] do
+				if(vertexOutputTable[facesPackRefs[packNumber][j]] ~= nil) then
+					table.insert(outputTable, (tostring(vertexOutputTable[facesPackRefs[packNumber][j]])..", packref: "..(packNumber-1)..","..(j-1)))
+					vertexRefs[facesPackRefs[packNumber][j]] = (j-1)
+				end
+			end
+			table.insert(final_file_output,"Vtx_tn Vtx_"..objectName.."_mesh01_"..(packNumber-1).."["..#facesPackRefs[packNumber].."] = {\n"..table.concat(outputTable,"\n").."\n};")
+		end
+	end
+end
+
+
+-- create face output strings
+faceOutputTable = {}
+for currentPack=1,#facesInPacks do
+	print("Faces in pack "..currentPack..": "..#facesInPacks[currentPack])
+	if(#facesInPacks[currentPack] > 0) then
+		table.insert(faceOutputTable,"gsSPVertex(&Vtx_"..objectName.."_mesh01_"..(currentPack-1).."[0], "..(32)..", 0)")
+	end
+
+	for k=1,#facesInPacks[currentPack], 2 do
+		if(#facesInPacks[currentPack]-k > 0) then
+			table.insert(
+				faceOutputTable,
+				"gsSP2Triangles("..
+				vertexRefs[facesInPacks[currentPack][k][1]]..", "..
+				vertexRefs[facesInPacks[currentPack][k][2]]..", "..
+				vertexRefs[facesInPacks[currentPack][k][3]]..", 0, "..
+				vertexRefs[facesInPacks[currentPack][k+1][1]]..", "..
+				vertexRefs[facesInPacks[currentPack][k+1][2]]..", "..
+				vertexRefs[facesInPacks[currentPack][k+1][3]]..", 0)")
+		else
+			table.insert(
+				faceOutputTable,
+				"gsSP1Triangle("..
+				vertexRefs[facesInPacks[currentPack][k][1]]..", "..
+				vertexRefs[facesInPacks[currentPack][k][2]]..", "..
+				vertexRefs[facesInPacks[currentPack][k][3]]..", 0)")
+		end
+	end
+end
+
+
+
+
+-- output faces
+table.insert(final_file_output,"Gfx Vtx_"..objectName.."_mesh01_dl[] = {\n\t"..table.concat(faceOutputTable,",\n\t")..",\n\tgsSPEndDisplayList(),\n};")
 print("Success creating faces and verts!")
 
 

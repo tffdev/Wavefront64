@@ -1,6 +1,6 @@
 -- UTILITIES
-function err()
-	print("ERROR: no file input")
+function err(str)
+	print(str)
 	os.exit(1)
 end
 
@@ -22,9 +22,11 @@ function readFile(path)
     return content
 end
 
-function padBinaryLeft(s)
-	local outstring = "0000000000000000"
-	outstring = string.sub(outstring,0,#outstring-#s)..s
+function padBinaryLeft(s,l)
+	local outstring = s
+	for _= #s + 1,l do
+		outstring = "0"..outstring
+	end
 	return outstring
 end
 
@@ -32,4 +34,61 @@ function padStringLeft(s,l)
 	local outstring = "                          "
 	outstring = string.sub(outstring,0,l-#tostring(s))..s
 	return outstring
+end
+
+function inTable(tab, val)
+    for index, value in ipairs(tab) do
+        if value == val then
+            return true
+        end
+    end
+    return false
+end
+
+function appendToOutput(stringValue)
+	table.insert(final_file_output, stringValue)
+end
+
+function printf(s,...)
+   return print(s:format(...))
+end
+
+function htmlOutput(s)
+	io.output(htmlFile)
+	io.write(s)
+end
+
+function initHtml()
+	htmlFile = io.open("table_output.html","w")
+	io.output(htmlFile)
+	io.write("")
+	io.close(htmlFile)
+	htmlFile = io.open("table_output.html","a")
+end
+
+function htmlClose()
+	io.close(htmlFile)
+end
+
+function tprint (tbl, indent)
+  if not indent then indent = 0 end
+  for k, v in pairs(tbl) do
+    formatting = string.rep("  ", indent) .. k .. ": "
+    if type(v) == "table" then
+      print(formatting)
+      tprint(v, indent+1)
+    elseif type(v) == 'boolean' then
+      print(formatting .. tostring(v))      
+    else
+      print(formatting .. v)
+    end
+  end
+end
+
+function boolToInt(bool)
+	if(bool) then
+		return 1
+	else
+		return 0
+	end
 end

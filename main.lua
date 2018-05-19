@@ -5,7 +5,7 @@ require("util")
 
 --[[ 
 ==========================
- START OF PROCEDURAL CODE
+ PARAMETERS
 ==========================
 --]] 
 
@@ -18,17 +18,17 @@ if(arg[1]==nil) then
 	err("ERROR: No file input")
 end
 
-objectName = string.match(arg[1], "([A-Za-z0-9]+)")
+obj_Name = string.match(arg[1], "([A-Za-z0-9]+)")
 
-mtl_file = readFile(objectName..".mtl")
-if(mtl_file == nil) then err("ERROR: No MTL file found.") else print("MTL file "..objectName..".mtl found.") end
+mtl_file = readFile(obj_Name..".mtl")
+if(mtl_file == nil) then err("ERROR: No MTL file found.") else print("MTL file "..obj_Name..".mtl found.") end
 
 -- init object
-object = obj_loader.load(objectName..".obj")
-if(object==nil) then
-	err(objectName..".obj not found")
+obj_Table = obj_loader.load(obj_Name..".obj")
+if(obj_Table==nil) then
+	err(obj_Name..".obj not found")
 else
-	print("OBJ File "..objectName..".obj found.")
+	print("OBJ File "..obj_Name..".obj found.")
 end
 
 -- init bitmap
@@ -43,10 +43,11 @@ end
 
 
 --[[ 
-=======================================
+====================================
  BITMAP PARSING TO BIG HEX-Y CHUNKS
-=======================================
+====================================
 --]] 
+
 print("Parsing bitmap...")
 table_of_bytes = {}
 table_preview = {}
@@ -59,98 +60,300 @@ for i=0,bmp.width-1 do
 		end
 		table.insert(table_preview,preview_tokens[math.floor((((r+g+b)/(255*3))*#preview_tokens)+0.5)])
 
-		local binstring = intToBin(math.floor(r/8))..intToBin(math.floor(g/8))..intToBin(math.floor(b/8)).."1"
-		binstring = padBinaryLeft(binstring)
+		local binstring = padBinaryLeft(intToBin(math.floor(r/8)),5)..
+			padBinaryLeft(intToBin(math.floor(g/8)),5)..
+			padBinaryLeft(intToBin(math.floor(b/8)),5).."1"
+
 		local outstring = "0x"..string.lower(Bin2Hex(binstring))..","
-		if(j==0) then outstring = "\t"..outstring end
-		if(j==bmp.height-1) then outstring = outstring.."\n" end
+		if(j==bmp.height-1) then outstring = "\t"..outstring end
+		if(j==0) then outstring = outstring.."\n" end
 		table.insert(table_of_bytes,outstring)
 	end
 end
 print("Success parsing bitmap!")
-table.insert(final_file_output,"/*\nObject Name: "..objectName.."\nObject Scaling Factor: "..object_scale.."\n\nTexture preview:"..table.concat(table_preview).."\n*/")
-table.insert(final_file_output,"unsigned short Text_"..objectName.."_"..name_of_texture.."_diff[] = {\n"..table.concat(table_of_bytes).."};")
+-- PREVIEW AND METADATA
+appendToOutput("/*\nObject Name: "..obj_Name.."\nObject Scaling Factor: "..object_scale.."\n\nTexture preview:"..table.concat(table_preview).."\n*/")
+-- DATA
+appendToOutput("unsigned short Text_"..obj_Name.."_"..name_of_texture.."_diff[] = {\n"..table.concat(table_of_bytes).."};")
 
 
 --[[ 
-=======================================
- FACES AND VERTS OUTPUT (gsSP2Triangles)
-=======================================
---]]
+======================================
+ FACES AND VERTS OUTPUT
+======================================
+
+TABLE STRUCTURES REFERENCE
+==========================
+vertexTable {
+	"3/5":
+		"index": 4
+		"content": "{ 30, -30, 30, 0, 0, 990, 130, 130, 130, 0},"
+	"4/6"
+		"index": 5 
+		...
+
+faceTable {
+	1: {2,5,3}
+	2: {4,0,2}
+	3: ...
+
+--]] 
+
 print("Creating faces and verts...")
 
 faceTable = {}
 vertexTable = {}
 vertexOutputTable = {}
 vertsCreated = 0
--- generate faces array
-for i=1,#object.f do
-	local faceVertReference = {}
-	faceVertReference[1] = (object.f[i][1].v-2 >= 0 and object.f[i][1].v-2 or #object.f-1)
-	faceVertReference[2] = (object.f[i][2].v-2 >= 0 and object.f[i][2].v-2 or #object.f-1)
-	faceVertReference[3] = (object.f[i][3].v-2 >= 0 and object.f[i][3].v-2 or #object.f-1)
 
+function formatVert(floatString)
+	return padStringLeft(math.floor(object_scale*floatString),5)
+end
+
+-- generate faces and verts arrays
+for i=1,#obj_Table.f do
+	local faceVertReference = {}
 	for j=1,3 do
-		if(vertexTable[tostring(object.f[i][j].v.."/"..object.f[i][j].vt)] == nil)then
+		-- "4/6", etc
+		local vert_ref_string = string.format("%i/%i",obj_Table.f[i][j].v,obj_Table.f[i][j].vt)
+
+		-- if the vertex DOESN'T already exist within a table, then create and assign it
+		if(vertexTable[vert_ref_string] == nil) then
 			--[[ 
 				make vert STRING for THIS unique combination
 				TODO: change 130 to the actual vert colors (if any)
 			--]] 
-			local vertString = "\t{"..
-				padStringLeft(math.floor(object_scale*object.v[object.f[i][j].v].x),8)..","..
-				padStringLeft(math.floor(object_scale*object.v[object.f[i][j].v].y),8)..","..
-				padStringLeft(math.floor(object_scale*object.v[object.f[i][j].v].z),8)..","..
-				padStringLeft("0",8)..","..
-				padStringLeft((2*object_scale*(bmp.height+1)*object.vt[object.f[i][j].vt].v),8)..","..
-				padStringLeft((2*object_scale*(bmp.width+1)*object.vt[object.f[i][j].vt].u),8)..",     130,     130,     130,     0}, //vert "..object.f[i][j].v.."/"..object.f[i][j].vt..", reference: "..vertsCreated
+			local vertString = string.format(
+				"\t{%s, %s, %s, 0, %s, %s, 130, 130, 130, 0}, //id: %i",
+				-- output spacial coordinates
+				formatVert( obj_Table.v[obj_Table.f[i][j].v].x ),
+				formatVert( obj_Table.v[obj_Table.f[i][j].v].y ),
+				formatVert( obj_Table.v[obj_Table.f[i][j].v].z ),
+				-- output texture coordinates
+				padStringLeft(math.floor(2*object_scale*(bmp.height+1)*obj_Table.vt[obj_Table.f[i][j].vt].v),6),
+				padStringLeft(math.floor(2*object_scale*(bmp.width+1)*obj_Table.vt[obj_Table.f[i][j].vt].u),6),
+				vertsCreated
+			)
 
-			-- make vertex
-			vertexTable[tostring(object.f[i][j].v.."/"..object.f[i][j].vt)] = {
+			-- put vertex in vertexTable
+			-- At the index, eg. "3/6" (vertex 3, tex vertex 6) create a unique vert
+			vertexTable[vert_ref_string] = {
 				index = vertsCreated,
 				content = vertString
 			}
-			faceVertReference[j] = vertexTable[object.f[i][j].v.."/"..object.f[i][j].vt].index
+
+			faceVertReference[j] = vertexTable[vert_ref_string].index
 			vertsCreated = vertsCreated + 1
-			table.insert(vertexOutputTable,vertexTable[object.f[i][j].v.."/"..object.f[i][j].vt].content)
+			if(vertexTable[vert_ref_string].content ~= nil) then
+				table.insert(vertexOutputTable,vertexTable[vert_ref_string].content)
+			end
 		else
-			faceVertReference[j] = vertexTable[object.f[i][j].v.."/"..object.f[i][j].vt].index
+		-- else, just assign the already-existing vertex
+			faceVertReference[j] = vertexTable[vert_ref_string].index
 		end
 	end
 	faceTable[i] = {faceVertReference[1],faceVertReference[2],faceVertReference[3]}
 end
 
--- create face output strings
-faceOutputTable = {}
-table.insert(faceOutputTable,"\tgsSPVertex(&Vtx_"..objectName.."_mesh01_0[0], "..vertsCreated..", 0)")
-for i=1,#faceTable, 2 do
-	if(#faceTable-i > 0) then
-		table.insert(faceOutputTable,"gsSP2Triangles("..faceTable[i][1]..", "..faceTable[i][2]..", "..faceTable[i][3]..", 0, "..faceTable[i+1][1]..", "..faceTable[i+1][2]..", "..faceTable[i+1][3]..", 0)")
-	else
-		table.insert(faceOutputTable,"gsSP1Triangle("..faceTable[i][1]..", "..faceTable[i][2]..", "..faceTable[i][3]..", 0)")
+
+--[[ 
+=================================================
+ SORT FACES AND VERTS INTO PACKS OF 32, BY INDEX
+=================================================
+
+TABLE STRUCTURES REFERENCE
+==========================
+facesPackRefs {
+	1: { 1, 2, 3...30,31,32}
+	2: {33,34,35...62,63,64}
+	...
+
+facesInPacks {
+	1:
+		1: {2,5,3}
+		2: {4,0,2}
+	2:
+		1: ...
+
+--]] 
+
+-- withholds the actual vert / face STRINGS per pack
+facesInPacks = {}
+facesNotInPacks = {}
+-- small buffer to check which references are in each pack
+facesPackRefs = {}
+
+--[[ 
+MAIN PACKAGING ALGORITHM
+=========================
+
+for all verts
+	loop through packs until:
+		current pack allows for additional vert eg. (0,1,2)
+		32 - [length of current pack] - [verts not already in pack] > 0
+		then
+			insert face into current pack
+	endloop
+endfor
+
+Hopefully this accomodates for verts that are close together in an actual object, otherwise
+it won't be very optimised in terms of memory, but it'll still work.
+--]] 
+
+-- table.sort(faceTable, 
+-- 	function(a,b) 
+-- 		return (a[1]+a[2]+a[3]) < (b[1]+b[2]+b[3])
+-- 	end
+-- )
+
+local packerrors = 0
+for i=1, #faceTable do
+	local inserted = false
+	for j=1,10 do
+		local unique_references = {}
+		-- if pack doesn't exist yet, create it
+		if(type(facesPackRefs[j]) ~= "table") then
+			facesInPacks[j] = {}
+			facesPackRefs[j] = {}
+		end
+		-- count up the amount of unique references that already exist in the current pack
+		for h=1,3 do
+			if(not inTable(facesPackRefs[j], faceTable[i][h]+1)) then
+				table.insert(unique_references,faceTable[i][h]+1)
+			end
+		end
+		-- if they can fit in the pack, put it in
+		if(32 - #facesPackRefs[j] - #unique_references >= 0) then
+			for z=1, #unique_references do
+				table.insert(facesPackRefs[j],unique_references[z])
+			end
+			table.insert(facesInPacks[j],faceTable[i])
+			inserted = true
+			break;
+		end
+	end
+	-- WE DON'T WANT THIS!! BUT IT'S HERE JUST IN CASE
+	if(inserted==false) then
+		packerrors = packerrors + 1
+		table.insert(facesNotInPacks,faceTable[i])
+		printf("Face (%i, %i, %i) can't be put into a pack!",faceTable[i][1],faceTable[i][2],faceTable[i][3])
 	end
 end
 
--- output verts
-table.insert(final_file_output,"Vtx_tn Vtx_"..objectName.."_mesh01_0["..#vertexOutputTable.."] = {\n"..table.concat(vertexOutputTable,"\n").."\n};")
--- output faces
-table.insert(final_file_output,"Gfx Vtx_"..objectName.."_mesh01_dl[] = {\n"..table.concat(faceOutputTable,",\n\t")..",\n\tgsSPEndDisplayList(),\n};")
 
+
+-- outputting "facesInPacks" to html
+initHtml()
+
+htmlOutput('<table border="1">')
+for k,v in pairs(facesInPacks) do
+	htmlOutput("<tr><th>Pack "..k.."</th>")
+	for i=1,#v do
+		htmlOutput("<td>("..table.concat(v[i],",")..")</td>")
+	end
+	htmlOutput("</tr>")
+end
+htmlOutput("<tr><th>Not In Packs</th>")
+for i=1,#facesNotInPacks do
+	htmlOutput("<td>("..table.concat(facesNotInPacks[i],",")..")</td>")
+end
+htmlOutput("</tr>")
+htmlOutput('</table>')
+
+
+-- outputting face references
+htmlOutput('<table border="1">')
+for k,v in pairs(facesPackRefs) do
+	htmlOutput("<tr><th>Pack "..k..", length "..#v.."</th>")
+	for i=1,#v do
+		htmlOutput("<td>"..(v[i]-1).."</td>")
+	end
+	htmlOutput("</tr>")
+end
+htmlOutput('</table>')
+htmlClose()
+
+
+if(packerrors>0) then
+	err("BUILD FAIL: "..packerrors.." faces weren't able to be consecutively referenced. Cancelling build.")
+end
+
+
+-- output verts in their packs
+vertexRefs = {}
+for packNumber=1, #facesPackRefs do
+	local vertPrintTable = {}
+	for i=1,#facesPackRefs[packNumber] do
+		table.insert(vertPrintTable,vertexOutputTable[facesPackRefs[packNumber][i]]..", direct reference: ["..(packNumber-1).."]["..(i-1).."]")
+	end
+	appendToOutput("Vtx_tn Vtx_"..obj_Name.."_mesh01_"..(packNumber-1).."["..#facesPackRefs[packNumber].."] = {\n"..table.concat(vertPrintTable,"\n").."\n};")
+	-- print("Vtx_tn Vtx_"..obj_Name.."_mesh01_"..(packNumber-1).."["..#facesPackRefs[packNumber].."] = {\n"..table.concat(vertPrintTable,"\n").."\n};")
+end
+
+
+function getLocationOfItem(haystack,needle)
+	for i=1,#haystack do
+		if(haystack[i] == needle) then
+			return i
+		end
+	end
+	return false
+end
+
+-- create face output strings
+faceOutputTable = {}
+for packNumber=1,#facesInPacks do
+
+	if(#facesInPacks[packNumber]==0) then print("Following packs are empty.") break end
+
+	print("Faces in pack "..packNumber..": "..#facesInPacks[packNumber]..", unique verts in pack: "..#facesPackRefs[packNumber])
+	if(#facesInPacks[packNumber] > 0) then
+		table.insert(faceOutputTable,"gsSPVertex(&Vtx_"..obj_Name.."_mesh01_"..(packNumber-1).."[0], "..#facesPackRefs[packNumber]..", 0)")
+	end
+	for k=1,#facesInPacks[packNumber], 2 do
+		if(#facesInPacks[packNumber] - k > 0) then
+			table.insert(
+				faceOutputTable,
+				string.format(
+					"gsSP2Triangles(%i,%i,%i,0,%i,%i,%i,0)",
+					getLocationOfItem(facesPackRefs[packNumber], facesInPacks[packNumber][k][1]+1)-1,
+					getLocationOfItem(facesPackRefs[packNumber], facesInPacks[packNumber][k][2]+1)-1,
+					getLocationOfItem(facesPackRefs[packNumber], facesInPacks[packNumber][k][3]+1)-1,
+					getLocationOfItem(facesPackRefs[packNumber], facesInPacks[packNumber][k+1][1]+1)-1,
+					getLocationOfItem(facesPackRefs[packNumber], facesInPacks[packNumber][k+1][2]+1)-1,
+					getLocationOfItem(facesPackRefs[packNumber], facesInPacks[packNumber][k+1][3]+1)-1
+				)
+			)
+		else
+			table.insert(
+				faceOutputTable,
+				string.format(
+					"gsSP1Triangle(%i,%i,%i,0)",
+					getLocationOfItem(facesPackRefs[packNumber], facesInPacks[packNumber][k][1]+1)-1,
+					getLocationOfItem(facesPackRefs[packNumber], facesInPacks[packNumber][k][2]+1)-1,
+					getLocationOfItem(facesPackRefs[packNumber], facesInPacks[packNumber][k][3]+1)-1
+				)
+			)
+		end
+	end
+end
+-- output faces
+appendToOutput("Gfx Vtx_"..obj_Name.."_mesh01_dl[] = {\n\t"..table.concat(faceOutputTable,",\n\t")..",\n\tgsSPEndDisplayList(),\n};")
 print("Success creating faces and verts!")
 
 
 
 
 -- output final display list
-table.insert(
-	final_file_output,
-	"Gfx Wtx_"..objectName.."[] = {\n\tgsDPLoadTextureBlock(Text_"..objectName.."_"..name_of_texture..
+appendToOutput(
+	"Gfx Wtx_"..obj_Name.."[] = {\n\tgsDPLoadTextureBlock(Text_"..obj_Name.."_"..name_of_texture..
 	"_diff, G_IM_FMT_RGBA, G_IM_SIZ_16b,\n\t\t32,32, 0, G_TX_WRAP|G_TX_NOMIRROR, G_TX_WRAP|G_TX_NOMIRROR,\n\t\t5,5, G_TX_NOLOD, G_TX_NOLOD),\n\tgsSPDisplayList(Vtx_"
-	..objectName.."_mesh01_dl),\n\tgsSPEndDisplayList()\n};"
+	..obj_Name.."_mesh01_dl),\n\tgsSPEndDisplayList()\n};"
 )
 
-file = io.open(objectName..".h","w")
+file = io.open(obj_Name..".h","w")
 io.output(file)
 io.write(table.concat(final_file_output,"\n\n"))
 io.close(file)
 
-print("=================================\nDONE!\nOutput file: \n"..objectName..".h\n=================================")
+print("=================================\nDONE!\nOutput file: \n"..obj_Name..".h\n=================================")

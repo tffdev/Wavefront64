@@ -32,7 +32,7 @@ else
 end
 
 -- init bitmap
-image_file_name, name_of_texture = string.match(mtl_file, "map_Kd (([A-Za-z]+).[A-Za-z]+)")
+image_file_name, name_of_texture = string.match(mtl_file, "map_Kd (([A-Za-z_-]+).[A-Za-z_-]+)")
 bmp = bitmap.from_file(image_file_name)
 if(bmp==nil) then
 	err("ERROR: File "..image_file_name.." doesn't exist, or file isn't a bitmap")
@@ -58,7 +58,7 @@ for i=0,bmp.width-1 do
 		if(j==bmp.height-1) then
 			table.insert(table_preview,"\n\t")
 		end
-		table.insert(table_preview,preview_tokens[math.floor((((r+g+b)/(255*3))*#preview_tokens)+0.5)])
+		table.insert(table_preview,preview_tokens[math.floor((((r+g+b)/(255*3))*#preview_tokens))+1])
 
 		local binstring = padBinaryLeft(intToBin(math.floor(r/8)),5)..
 			padBinaryLeft(intToBin(math.floor(g/8)),5)..
@@ -306,7 +306,6 @@ for packNumber=1,#facesInPacks do
 
 	if(#facesInPacks[packNumber]==0) then print("Following packs are empty.") break end
 
-	print("Faces in pack "..packNumber..": "..#facesInPacks[packNumber]..", unique verts in pack: "..#facesPackRefs[packNumber])
 	if(#facesInPacks[packNumber] > 0) then
 		table.insert(faceOutputTable,"gsSPVertex(&Vtx_"..obj_Name.."_mesh01_"..(packNumber-1).."[0], "..#facesPackRefs[packNumber]..", 0)")
 	end

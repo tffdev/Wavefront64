@@ -1,5 +1,9 @@
 # wavefront64
 
+
+![Celebi](https://i.imgur.com/fXzqiGc.gif)
+
+
 ### Usage:
 `./Wavefront64 your_obj_file.obj <scale> <use gsSP1Triangle>`
 

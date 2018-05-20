@@ -2,7 +2,27 @@ bitmap = require("bitmap")
 obj_loader = require("obj_loader")
 require("BinDecHex")
 require("util")
+helptext = [[
 
+WAVEFRONT 64
+============
+
+Usage:
+	"lua main.lua your_obj_file.obj <scale> <use gsSP1Triangle>"
+	
+	Vertex Scale argument defaults to 30
+	Fast3D argument defaults to false
+	
+	e.g. `lua main.lua Celebi.obj 30`
+
+Outputs to a C header file of the same name.
+e.g. `Celebi.h`	
+
+Please note that this currently only works with objects that:
+* have only a single mesh
+* have one bitmap texture with a max size of 32x32
+
+]]
 --[[ 
 ==========================
  PARAMETERS
@@ -10,18 +30,27 @@ require("util")
 --]] 
 
 final_file_output = {}
-object_scale = 30
-two_tris = true
+two_tris = not arg[3] or false
+object_scale = arg[2] or 30
 
--- INPUT error checking
+--[[ 
+==========================
+ PARAMETERS
+==========================
+--]] 
 if(arg[1]==nil) then
-	err("ERROR: No file input")
+	print(helptext)
+	err()
 end
+
+print("Object Scale set to "..object_scale)
+print("Fast3D on: "..tostring(not two_tris))
+
 
 obj_Name = string.match(arg[1], "([A-Za-z0-9]+)")
 
 mtl_file = readFile(obj_Name..".mtl")
-if(mtl_file == nil) then err("ERROR: No MTL file found.") else print("MTL file "..obj_Name..".mtl found.") end
+if(mtl_file == nil) then err("ERROR: No MTL file found for "..obj_Name..".mtl") else print("MTL file "..obj_Name..".mtl found.") end
 
 -- init object
 obj_Table = obj_loader.load(obj_Name..".obj")
@@ -200,11 +229,6 @@ Hopefully this accomodates for verts that are close together in an actual object
 it won't be very optimised in terms of memory, but it'll still work.
 --]] 
 
--- table.sort(faceTable, 
--- 	function(a,b) 
--- 		return (a[1]+a[2]+a[3]) < (b[1]+b[2]+b[3])
--- 	end
--- )
 
 local packerrors = 0
 for i=1, #faceTable do
@@ -241,39 +265,6 @@ for i=1, #faceTable do
 end
 
 
-
--- outputting "facesInPacks" to html
-initHtml()
-
-htmlOutput('<table border="1">')
-for k,v in pairs(facesInPacks) do
-	htmlOutput("<tr><th>Pack "..k.."</th>")
-	for i=1,#v do
-		htmlOutput("<td>("..table.concat(v[i],",")..")</td>")
-	end
-	htmlOutput("</tr>")
-end
-htmlOutput("<tr><th>Not In Packs</th>")
-for i=1,#facesNotInPacks do
-	htmlOutput("<td>("..table.concat(facesNotInPacks[i],",")..")</td>")
-end
-htmlOutput("</tr>")
-htmlOutput('</table>')
-
-
--- outputting face references
-htmlOutput('<table border="1">')
-for k,v in pairs(facesPackRefs) do
-	htmlOutput("<tr><th>Pack "..k..", length "..#v.."</th>")
-	for i=1,#v do
-		htmlOutput("<td>"..(v[i]-1).."</td>")
-	end
-	htmlOutput("</tr>")
-end
-htmlOutput('</table>')
-htmlClose()
-
-
 if(packerrors>0) then
 	err("BUILD FAIL: "..packerrors.." faces weren't able to be consecutively referenced. Cancelling build.")
 end
@@ -287,7 +278,6 @@ for packNumber=1, #facesPackRefs do
 		table.insert(vertPrintTable,vertexOutputTable[facesPackRefs[packNumber][i]]..", direct reference: ["..(packNumber-1).."]["..(i-1).."]")
 	end
 	appendToOutput("Vtx_tn Vtx_"..obj_Name.."_mesh01_"..(packNumber-1).."["..#facesPackRefs[packNumber].."] = {\n"..table.concat(vertPrintTable,"\n").."\n};")
-	-- print("Vtx_tn Vtx_"..obj_Name.."_mesh01_"..(packNumber-1).."["..#facesPackRefs[packNumber].."] = {\n"..table.concat(vertPrintTable,"\n").."\n};")
 end
 
 
@@ -300,17 +290,16 @@ function getLocationOfItem(haystack,needle)
 	return false
 end
 
--- create face output strings
+-- WRITE FACES TO FILE / DISPLAY LIST
 faceOutputTable = {}
 for packNumber=1,#facesInPacks do
-
-	if(#facesInPacks[packNumber]==0) then print("Following packs are empty.") break end
-
 	if(#facesInPacks[packNumber] > 0) then
 		table.insert(faceOutputTable,"gsSPVertex(&Vtx_"..obj_Name.."_mesh01_"..(packNumber-1).."[0], "..#facesPackRefs[packNumber]..", 0)")
 	end
-	for k=1,#facesInPacks[packNumber], 2 do
-		if(#facesInPacks[packNumber] - k > 0) then
+	local step = 0
+	if(two_tris) then step = 2 else step = 1 end
+	for k=1,#facesInPacks[packNumber], step do
+		if(#facesInPacks[packNumber] - k > 0 and two_tris) then
 			table.insert(
 				faceOutputTable,
 				string.format(
@@ -344,6 +333,7 @@ print("Success creating faces and verts!")
 
 
 -- output final display list
+-- This isn't customisable at the moment at all but until I actually figure out what'd need changing, I'll leave this!
 appendToOutput(
 	"Gfx Wtx_"..obj_Name.."[] = {\n\tgsDPLoadTextureBlock(Text_"..obj_Name.."_"..name_of_texture..
 	"_diff, G_IM_FMT_RGBA, G_IM_SIZ_16b,\n\t\t32,32, 0, G_TX_WRAP|G_TX_NOMIRROR, G_TX_WRAP|G_TX_NOMIRROR,\n\t\t5,5, G_TX_NOLOD, G_TX_NOLOD),\n\tgsSPDisplayList(Vtx_"

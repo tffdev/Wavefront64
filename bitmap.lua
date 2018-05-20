@@ -110,6 +110,4 @@ function Bitmap.from_file(path)
 	return Bitmap.from_string(content)
 end
 
-
-
 return Bitmap

@@ -1,19 +1,24 @@
 # wavefront64
 
-**THIS IS A WIP AND ISN'T SUITABLE FOR USE JUST YET.**
+### Usage:
+`./Wavefront64 your_obj_file.obj <scale> <use gsSP1Triangle>`
 
-But hey if you wanna have a try, go ahead!
+Vertex Scale argument defaults to 30
+Fast3D argument defaults to false
+
+e.g. `./Wavefront64 Celebi.obj 30`
+
+However if you want to help with this project and want to run
+the development version, replace `./Wavefront64` with `lua main.lua` 
+e.g. `lua main.lua Celebi.obj 30`
+
+Outputs to a C header file of the same name.
+e.g. `Celebi.h`	
 
 
-Usage:
-* navigate to folder with `obj`,`mtl` and all texture files
-* `lua main.lua Your_OBJ_File.obj`
-* The output will be the same name as your input file name as a C header filetype
+### Limitations:
+* Textures must be BITMAP files
+* Textures must be 32x32 pixels at most
+* can only handle a single mesh, no matter how many verts
 
-That's it! I'll add more to this when it's totally finished!
-
-Limitations:
-* **Textures MUST be BITMAP files**
-* currently only works well with 32x32bit MAX bitmaps
-* can only handle a single mesh
-* cannot have more than 30 vertices at the moment (planning to fix this tomorrow!)
+I will be actively working on fixing these limitations after exam season is over!

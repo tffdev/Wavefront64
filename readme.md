@@ -1,24 +1,26 @@
-# wavefront64
+# Wavefront64
 
 
 ![Celebi](https://i.imgur.com/fXzqiGc.gif)
 
 
 ### Usage:
-`./Wavefront64 your_obj_file.obj <scale> <use gsSP1Triangle>`
+`lua main.lua your_obj_file.obj`
 
 Vertex Scale argument defaults to 30
 Fast3D argument defaults to false
 
-e.g. `./Wavefront64 Celebi.obj 30`
+e.g. `lua main.lua Celebi.obj`
 
-However if you want to help with this project and want to run
-the development version, replace `./Wavefront64` with `lua main.lua` 
-e.g. `lua main.lua Celebi.obj 30`
+The script will ask you what you want vertex scaling to be and if you want Fast3D support.
 
 Outputs to a C header file of the same name.
 e.g. `Celebi.h`	
 
+### Requirements:
+* `Lua` >= 5.2 (I guess)
+OR (better)
+* `luajit`, `sudo apt-get install luajit` and replace `lua` with `luajit` when running script.
 
 ### Limitations:
 * Textures must be BITMAP files
@@ -26,3 +28,8 @@ e.g. `Celebi.h`
 * can only handle a single mesh, no matter how many verts
 
 I will be actively working on fixing these limitations after exam season is over!
+
+### Todo:
+* Add functionality to just parse images for sprites!
+* Add PNG support for said features
+* Let objects have more than one texture

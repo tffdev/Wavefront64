@@ -1,7 +1,9 @@
-bitmap = require("bitmap")
-obj_loader = require("obj_loader")
-require("BinDecHex")
-require("util")
+bitmap = require("deps.bitmap")
+obj_loader = require("deps.obj_loader")
+require("deps.BinDecHex")
+require("deps.util")
+
+
 helptext = [[
 
 WAVEFRONT 64
@@ -30,7 +32,6 @@ Please note that this currently only works with objects that:
 --]] 
 
 final_file_output = {}
-two_tris = not arg[3] or false
 object_scale = arg[2] or 30
 
 --[[ 
@@ -42,9 +43,15 @@ if(arg[1]==nil) then
 	print(helptext)
 	err()
 end
+print("WAVEFRONT64")
 
+io.write("Vertex scale [int. default:30]:" )
+object_scale = tonumber(io.read()) or 30
 print("Object Scale set to "..object_scale)
-print("Fast3D on: "..tostring(not two_tris))
+
+io.write("Use gsSP1Triangle? (for Fast3D) [y/n. default:n]:" )
+one_tri = (io.read():lower() == "y") or false
+print("Fast3D on: "..tostring(one_tri))
 
 
 obj_Name = string.match(arg[1], "([A-Za-z0-9]+)")
@@ -75,6 +82,10 @@ end
 ====================================
  BITMAP PARSING TO BIG HEX-Y CHUNKS
 ====================================
+TODO:
+* use this section to create sprite header files
+* sort this entire program out, god damn!!!!!!!!
+
 --]] 
 
 print("Parsing bitmap...")
@@ -92,6 +103,9 @@ for i=0,bmp.width-1 do
 		local binstring = padBinaryLeft(intToBin(math.floor(r/8)),5)..
 			padBinaryLeft(intToBin(math.floor(g/8)),5)..
 			padBinaryLeft(intToBin(math.floor(b/8)),5).."1"
+			-- the "1" on the end is the alpha, i'll add
+			-- features to let this be changed once i add
+			-- PNG support and stuff
 
 		local outstring = "0x"..string.lower(Bin2Hex(binstring))..","
 		if(j==bmp.height-1) then outstring = "\t"..outstring end
@@ -297,9 +311,14 @@ for packNumber=1,#facesInPacks do
 		table.insert(faceOutputTable,"gsSPVertex(&Vtx_"..obj_Name.."_mesh01_"..(packNumber-1).."[0], "..#facesPackRefs[packNumber]..", 0)")
 	end
 	local step = 0
-	if(two_tris) then step = 2 else step = 1 end
+	if(one_tri) then step = 1 else step = 2 end
 	for k=1,#facesInPacks[packNumber], step do
-		if(#facesInPacks[packNumber] - k > 0 and two_tris) then
+		-- real strange backwards-referencing thing
+		-- draws faces using positions of vertices that have
+		-- the associative ID number. Searches for ID, and
+		-- returns the POSITION within the array, which is what
+		-- we'll put in the gsSP2Triangles function. 
+		if(#facesInPacks[packNumber] - k > 0 and not one_tri) then
 			table.insert(
 				faceOutputTable,
 				string.format(
@@ -333,11 +352,22 @@ print("Success creating faces and verts!")
 
 
 -- output final display list
--- This isn't customisable at the moment at all but until I actually figure out what'd need changing, I'll leave this!
+-- This isn't customisable at the moment at all but until I 
+-- actually figure out what'd need changing, I'll leave this!
 appendToOutput(
-	"Gfx Wtx_"..obj_Name.."[] = {\n\tgsDPLoadTextureBlock(Text_"..obj_Name.."_"..name_of_texture..
-	"_diff, G_IM_FMT_RGBA, G_IM_SIZ_16b,\n\t\t32,32, 0, G_TX_WRAP|G_TX_NOMIRROR, G_TX_WRAP|G_TX_NOMIRROR,\n\t\t5,5, G_TX_NOLOD, G_TX_NOLOD),\n\tgsSPDisplayList(Vtx_"
-	..obj_Name.."_mesh01_dl),\n\tgsSPEndDisplayList()\n};"
+string.format(
+[[
+Gfx Wtx_%s[] = {
+	gsDPLoadTextureBlock(Text_%s_%s_diff, G_IM_FMT_RGBA, G_IM_SIZ_16b,32,32, 0, 
+		G_TX_WRAP|G_TX_NOMIRROR, G_TX_WRAP|G_TX_NOMIRROR,5,5, G_TX_NOLOD, G_TX_NOLOD), 
+	gsSPDisplayList(Vtx_%s_mesh01_dl),
+	gsSPEndDisplayList()
+};
+]],
+obj_Name,
+obj_Name,
+name_of_texture,
+obj_Name)
 )
 
 file = io.open(obj_Name..".h","w")

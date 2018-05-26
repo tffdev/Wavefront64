@@ -36,11 +36,13 @@ The script will ask you what you want vertex scaling to be and if you want Fast3
 ### Limitations:
 * Textures must be BITMAP files
 * Textures must be 32x32 pixels at most
-* can only handle a single mesh, no matter how many verts
+* can only handle a single mesh
+* doesn't support vertex colours yet (need further testing)
 
 I will be actively working on fixing these limitations after exam season is over!
 
 ### Todo:
-* Add functionality to just parse images for sprites!
+* ~~Add functionality to just parse images for sprites!~~
 * Add PNG support for said features
 * Let objects have more than one texture
+* Vertex colour support!!

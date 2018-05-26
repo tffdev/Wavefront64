@@ -356,7 +356,7 @@ function w64_outputTriangles(facesInPacks, facesPackRefs, one_tri, objname)
 	print("Success creating faces and verts!")
 	return string.format(
 		"Gfx Vtx_%s_mesh01_dl[] = {\n\t%s,\n\tgsSPEndDisplayList(),\n};",
-		obj_Name,
+		objname,
 		table.concat(faceOutputTable,",\n\t")
 	)
 end
@@ -410,8 +410,7 @@ function w64_outputVerts(facesinpacks,facesinpacksrefs,verttexttable,objname)
 	local outputTable = {}
 	for packNumber=1, #facesinpacks do
 		local vertPrintTable = {}
-		for i=1,#facesinpacks[packNumber] do
-
+		for i=1,#facesinpacksrefs[packNumber] do
 			table.insert(vertPrintTable,verttexttable[facesinpacksrefs[packNumber][i]])
 			-- old append (debugging):
 			-- ", direct reference: ["..(packNumber-1).."]["..(i-1).."]"
@@ -420,7 +419,7 @@ function w64_outputVerts(facesinpacks,facesinpacksrefs,verttexttable,objname)
 			"Vtx_tn Vtx_%s_mesh01_%i[%i] = {\n%s\n};",
 			objname,
 			packNumber-1,
-			#facesinpacks[packNumber],
+			#facesinpacksrefs[packNumber],
 			table.concat(vertPrintTable,"\n")
 		))
 	end

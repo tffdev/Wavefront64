@@ -7,61 +7,110 @@ helptext = [[
 
 WAVEFRONT 64
 ============
-
 Usage:
-	"lua main.lua <path for your obj file>"
-	
-	Vertex Scale argument defaults to 30
-	Fast3D argument defaults to false
-	
-	e.g. `lua main.lua Celebi.obj 30`
+	OBJECT TO C
+	"lua main.lua obj <path_to_obj>"
+	e.g. `lua main.lua obj Celebi.obj`
+
+	SPRITE TO C
+	"lua main.lua spr <path_to_bmp>"
+	e.g. `lua main.lua spr Celebi.bmp`
 
 Outputs to a C header file of the same name.
 e.g. `Celebi.h`	
 
 Please note that this currently only works with objects that:
 * have only a single mesh
-* have one bitmap texture with a max size of 32x32
-
+* have one bitmap texture with a max size of 32x32 (sprites can be any size!)
+And also vertex colours don't work yet. I'll work on that!
 ]]
 
-function w64_init()
-	if(arg[1]==nil) then
-		print(helptext)
-		err()
-	end
+function w64_main()
 	print("WAVEFRONT64")
+	filename = ""
+	local final_file_output = {}
+	if(arg[1] == nil or arg[2] == nil) then err(helptext) end
 
+	if(arg[1]:lower()=="obj") then
+		-- OBJECT PARSING
+		-- Main functional pipeline
+		local objname, objtable, texturename, bmp, objscale, fast3d = w64_initTexturedObject(arg[2])
+		local bmptable, previewtable 								= w64_bmpFileToC(bmp)
+		local facetable, verttable, verttexttable 					= w64_VFFormat(objtable, objscale)
+		local facesinpacks, facesinpacksrefs						= w64_VFSort(facetable)
 
-	-- object init stuff
-	obj_Name = string.match(arg[1], "([A-Za-z0-9]+)")
-
-	mtl_file = readFile(obj_Name..".mtl")
-	if(mtl_file == nil) then err("ERROR: No MTL file found for "..obj_Name..".mtl") else print("MTL file "..obj_Name..".mtl found.") end
-
-	-- init object
-	obj_Table = obj_loader.load(obj_Name..".obj")
-	if(obj_Table==nil) then
-		err(obj_Name..".obj not found")
+		-- File output pipeline (push to final_file_output)
+		local metaString, textureString 	= w64_outputTexture(objname,texturename,previewtable,bmptable)
+		local vertexString 					= w64_outputVerts(facesinpacks,facesinpacksrefs,verttexttable,objname)
+		local faceString 					= w64_outputTriangles(facesinpacks, facesinpacksrefs, fast3d, objname)
+		local displayListString 			= w64_outputDisplayList(objname,texturename)
+		final_file_output = {metaString,textureString,vertexString,faceString,displayListString}
+		filename = objname
+	elseif(arg[1]:lower()=="spr") then
+		-- SPRITE ONLY PARSING
+		-- functional pipeline
+		local objname, bmp 				= w64_initSprite(arg[2])
+		local bmptable, previewtable 	= w64_bmpFileToC(bmp)
+		local metastring, datastring 	= w64_outputTexture(0,objname,previewtable,bmptable)
+		final_file_output = {metastring, datastring}
+		filename = objname
 	else
-		print("OBJ File "..obj_Name..".obj found.")
+		err("Improper operation type: "..arg[1].."!")
 	end
 
-	-- init bitmap
-	image_file_name, name_of_texture = string.match(mtl_file, "map_Kd (([A-Za-z_-]+).[A-Za-z_-]+)")
+	-- write file
+	file = io.open(filename..".h","w")
+	io.output(file)
+	io.write(table.concat(final_file_output,"\n\n"))
+	io.close(file)
+	print("=================================")
+	print(string.format("DONE! Output file: %s.h",filename))
+	print("=================================")
+end
+
+function w64_initSprite(argument)
+	local sprfilename = string.match(argument, "([A-Za-z0-9]+)")
+	local bmp = w64_loadBitmap(sprfilename..".bmp")
+	return sprfilename, bmp 
+end
+
+function w64_loadBitmap(image_file_name)
 	bmp = bitmap.from_file(image_file_name)
 	if(bmp==nil) then
 		err("ERROR: File "..image_file_name.." doesn't exist, or file isn't a bitmap")
 	else
 		print("BMP File "..image_file_name.." found.")
 	end
+	return bmp 
+end
+
+function w64_initTexturedObject(argument)
+	-- object init stuff
+	local obj_Name = string.match(argument, "([A-Za-z0-9]+)")
+
+	local mtl_file = readFile(obj_Name..".mtl")
+	if(mtl_file == nil) then err("ERROR: No MTL file found for "..obj_Name..".mtl") else print("MTL file "..obj_Name..".mtl found.") end
+
+	-- init object
+	local obj_Table = obj_loader.load(obj_Name..".obj")
+	if(obj_Table==nil) then
+		err(obj_Name..".obj not found")
+	else
+		print("OBJ File "..obj_Name..".obj found.")
+	end
+
+	-- load bitmap
+	local image_file_name, name_of_texture = string.match(mtl_file, "map_Kd (([A-Za-z_-]+).[A-Za-z_-]+)")
+	local bmp = w64_loadBitmap(image_file_name)
 
 	-- asks user what tf they want
-	io.write("Vertex scale [int. default:30]:" )
+	print("Vertex scale? [int. default:30]" )
+	io.write(">")
 	local object_scale = tonumber(io.read()) or 30
 	print("Object Scale set to "..object_scale)
 
-	io.write("Use gsSP1Triangle? (for Fast3D) [y/n. default:n]:" )
+	print("Use gsSP1Triangle? (for Fast3D) [y/n. default:n]" )
+	io.write(">")
 	local one_tri = (io.read():lower() == "y") or false
 	print("Fast3D on: "..tostring(one_tri))
 
@@ -261,13 +310,13 @@ function w64_VFSort(faceTable)
 	return facesInPacks, facesPackRefs
 end
 	
-function w64_outputTriangles(facesInPacks, facesPackRefs, one_tri)
+function w64_outputTriangles(facesInPacks, facesPackRefs, one_tri, objname)
 	-- WRITE FACES TO FILE / DISPLAY LIST
 	faceOutputTable = {}
 	for packNumber=1,#facesInPacks do
 		-- for all packs, start by loading the verts
 		if(#facesInPacks[packNumber] > 0) then
-			table.insert(faceOutputTable,"gsSPVertex(&Vtx_"..obj_Name.."_mesh01_"..(packNumber-1).."[0], "..#facesPackRefs[packNumber]..", 0)")
+			table.insert(faceOutputTable,"gsSPVertex(&Vtx_"..objname.."_mesh01_"..(packNumber-1).."[0], "..#facesPackRefs[packNumber]..", 0)")
 		end
 		local step = 0
 		if(one_tri) then step = 1 else step = 2 end
@@ -304,54 +353,61 @@ function w64_outputTriangles(facesInPacks, facesPackRefs, one_tri)
 		end
 	end
 	-- output faces
-	appendToOutput("Gfx Vtx_"..obj_Name.."_mesh01_dl[] = {\n\t"..table.concat(faceOutputTable,",\n\t")..",\n\tgsSPEndDisplayList(),\n};")
 	print("Success creating faces and verts!")
-end
-
-function w64_finalDisplayList(obj_Name,name_of_texture)
-
-	-- output final display list
-	-- This isn't customisable at the moment at all but until I 
-	-- actually figure out what'd need changing, I'll leave this!
-	appendToOutput(
-		string.format(
-			"Gfx Wtx_%s[] = {\n"..
-			"\t  gsDPLoadTextureBlock(Text_%s_%s_diff, G_IM_FMT_RGBA, G_IM_SIZ_16b,32,32,0, \n"..
-			"\t  \t  G_TX_WRAP|G_TX_NOMIRROR, G_TX_WRAP|G_TX_NOMIRROR,5,5, G_TX_NOLOD, G_TX_NOLOD), \n"..
-			"\t  gsSPDisplayList(Vtx_%s_mesh01_dl),\n"..
-			"\t  gsSPEndDisplayList()\n"..
-			"};",
-			obj_Name,
-			obj_Name,
-			name_of_texture,
-			obj_Name
-		)
+	return string.format(
+		"Gfx Vtx_%s_mesh01_dl[] = {\n\t%s,\n\tgsSPEndDisplayList(),\n};",
+		obj_Name,
+		table.concat(faceOutputTable,",\n\t")
 	)
 end
 
-function w64_main()
-	final_file_output = {}
-	local objname, objtable, texturename, bmp, objscale, fast3d = w64_init()
-	local bmptable, previewtable = w64_bmpFileToC(bmp)
+function w64_outputDisplayList(obj_Name,name_of_texture)
+	-- output final display list
+	-- This isn't customisable at the moment at all but until I 
+	-- actually figure out what'd need changing, I'll leave this!
+	return string.format(
+		"Gfx Wtx_%s[] = {\n"..
+		"\t  gsDPLoadTextureBlock(Text_%s_%s_diff, G_IM_FMT_RGBA, G_IM_SIZ_16b,32,32,0, \n"..
+		"\t  \t  G_TX_WRAP|G_TX_NOMIRROR, G_TX_WRAP|G_TX_NOMIRROR,5,5, G_TX_NOLOD, G_TX_NOLOD), \n"..
+		"\t  gsSPDisplayList(Vtx_%s_mesh01_dl),\n"..
+		"\t  gsSPEndDisplayList()\n"..
+		"};",
+		obj_Name,
+		obj_Name,
+		name_of_texture,
+		obj_Name
+	)
+end
+
+function w64_outputTexture(objname,texturename,previewtable,bmptable)
 	-- Output texture metadata
-	appendToOutput(string.format(
-		"/*\nObject Name: %s\nObject Scaling Factor: %i\n\nTexture preview:%s\n*/",
+	local metastring = string.format(
+		"/*\nName: %s\nTexture preview:%s\n*/",
 		objname,
-		objscale,
 		table.concat(previewtable)
-	))
+	)
 	-- Output texture byte data
-	appendToOutput(string.format(
-		"unsigned short Text_%s_%s_diff[] = {\n%s};",
-		objname,
-		texturename,
-		table.concat(bmptable)
-	))
+	local datastring = ""
+	if(objname==0) then
+		datastring = string.format(
+			"unsigned short Sprite_%s[] = {\n%s};",
+			texturename,
+			table.concat(bmptable)
+		)
+	else
+		datastring = string.format(
+			"unsigned short Text_%s_%s_diff[] = {\n%s};",
+			objname,
+			texturename,
+			table.concat(bmptable)
+		)
+	end
+	return metastring, datastring
+end
 
-	local facetable, verttable, verttexttable = w64_VFFormat(objtable, objscale)
-	local facesinpacks, facesinpacksrefs = w64_VFSort(facetable)
-
+function w64_outputVerts(facesinpacks,facesinpacksrefs,verttexttable,objname)
 	-- output verts in their packs
+	local outputTable = {}
 	for packNumber=1, #facesinpacks do
 		local vertPrintTable = {}
 		for i=1,#facesinpacks[packNumber] do
@@ -360,7 +416,7 @@ function w64_main()
 			-- old append (debugging):
 			-- ", direct reference: ["..(packNumber-1).."]["..(i-1).."]"
 		end
-		appendToOutput(string.format(
+		table.insert(outputTable, string.format(
 			"Vtx_tn Vtx_%s_mesh01_%i[%i] = {\n%s\n};",
 			objname,
 			packNumber-1,
@@ -368,17 +424,13 @@ function w64_main()
 			table.concat(vertPrintTable,"\n")
 		))
 	end
-
-	w64_outputTriangles(facesinpacks, facesinpacksrefs, fast3d)
-	w64_finalDisplayList(objname,texturename)
-
-	-- write file
-	file = io.open(objname..".h","w")
-	io.output(file)
-	io.write(table.concat(final_file_output,"\n\n"))
-	io.close(file)
-	print("=================================\nDONE!\nOutput file: \n"..objname..".h\n=================================")
+	return table.concat(outputTable)
 end
 
--- Call the main function, run program!
+--  ˚   　　　*   　  ·  ✧ 
+-- 　　  ·  .　 　　 ˚ 
+-- .  ·  .  .   ⊹ 　  ·
 w64_main()
+--     *  .  ✺ 　  　     ✹   ✫ 
+--  · .　　.     　  　 
+--    . ✵

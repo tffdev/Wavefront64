@@ -5,22 +5,33 @@
 
 
 ### Usage:
-`lua main.lua your_obj_file.obj`
+`lua main.lua <operation> <file>`
 
-Vertex Scale argument defaults to 30
-Fast3D argument defaults to false
+Operations:
+* obj (converts textured wavefront to C header)
+* spr (converts bitmap to C header)
 
-e.g. `lua main.lua Celebi.obj`
+#### Examples
+OBJ -> C
+`lua main.lua obj <path_to_obj>`
+e.g. `lua main.lua obj Celebi.obj`
 
-The script will ask you what you want vertex scaling to be and if you want Fast3D support.
+SPRITE -> C
+`lua main.lua spr <path_to_bmp>`
+e.g. `lua main.lua spr Celebi.bmp`
 
 Outputs to a C header file of the same name.
 e.g. `Celebi.h`	
 
+
+Vertex Scale argument defaults to 30
+Fast3D argument defaults to false
+
+The script will ask you what you want vertex scaling to be and if you want Fast3D support.
+
 ### Requirements:
-* `Lua` >= 5.2 (I guess)
-OR (better)
-* `luajit`, `sudo apt-get install luajit` and replace `lua` with `luajit` when running script.
+* Lua
+* Computer
 
 ### Limitations:
 * Textures must be BITMAP files

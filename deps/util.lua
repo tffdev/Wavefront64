@@ -92,3 +92,16 @@ function boolToInt(bool)
 		return 0
 	end
 end
+
+function getLocationOfItem(haystack,needle)
+	for i=1,#haystack do
+		if(haystack[i] == needle) then
+			return i
+		end
+	end
+	return false
+end
+
+function formatVert(floatString, object_scale)
+	return padStringLeft(math.floor(object_scale*floatString),5)
+end

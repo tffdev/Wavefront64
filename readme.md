@@ -5,7 +5,9 @@
 
 
 ### Usage:
-```lua main.lua <operation> <file>```
+```bash
+lua main.lua <operation> <file>
+```
 
 Operations:
 * obj (converts textured wavefront to C header)
